@@ -94,8 +94,8 @@ To shut down all running services and clean up containers, run the shutdown scri
 
 ## System Configuration Details
 
-- **Frontend Port**: `5173`
-- **Backend Port**: `5001`
+- **Frontend Port**: `8080`
+- **Backend Port**: `8081`
 - **Ollama Port**: `11434`
 - **Workspace Location**: `./workspace` (auto-created on host)
 - **Persistent Models Volume**: `./ollama_models` (used if Ollama is run in Docker container)
