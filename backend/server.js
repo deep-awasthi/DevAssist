@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -26,6 +27,46 @@ if (!fs.existsSync(WORKSPACE_DIR)) {
 
 app.use(cors());
 app.use(express.json());
+
+function expandHome(inputPath) {
+  if (!inputPath || inputPath === '~') {
+    return os.homedir();
+  }
+  if (inputPath.startsWith(`~${path.sep}`) || inputPath.startsWith('~/')) {
+    return path.join(os.homedir(), inputPath.slice(2));
+  }
+  return inputPath;
+}
+
+function resolveOutputPath(outputPath, projectTitle = 'project') {
+  if (outputPath && outputPath.trim()) {
+    const trimmedPath = expandHome(outputPath.trim());
+    return path.resolve(path.isAbsolute(trimmedPath) ? trimmedPath : path.join(WORKSPACE_DIR, trimmedPath));
+  }
+
+  const safeTitle = (projectTitle || 'project')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '') || 'project';
+  return path.join(WORKSPACE_DIR, `${safeTitle}-${Date.now()}`);
+}
+
+function getSafeFilePath(projectPath, filePath) {
+  const normalized = path.normalize(String(filePath || '')).replace(/^([/\\])+/, '');
+
+  if (!normalized || normalized === '.' || normalized.split(path.sep).includes('..')) {
+    throw new Error(`Unsafe generated file path rejected: ${filePath}`);
+  }
+
+  const fullFilePath = path.resolve(projectPath, normalized);
+  const relativeToProject = path.relative(projectPath, fullFilePath);
+
+  if (relativeToProject.startsWith('..') || path.isAbsolute(relativeToProject)) {
+    throw new Error(`Directory traversal attempt detected in path: ${filePath}`);
+  }
+
+  return { safeRelativePath: normalized, fullFilePath };
+}
 
 // Helper function to check Ollama availability
 async function checkOllamaConnection() {
@@ -56,9 +97,49 @@ app.get('/api/models', async (req, res) => {
       models: response.data.models || [],
     });
   } catch (error) {
-    res.status(500).json({
+    res.json({
       success: false,
       message: 'Failed to connect to Ollama server',
+      error: error.message,
+    });
+  }
+});
+
+// Endpoint: Browse local directories for project destination selection
+app.get('/api/directories', async (req, res) => {
+  const requestedPath = req.query.path ? String(req.query.path) : os.homedir();
+  const currentPath = path.resolve(expandHome(requestedPath));
+
+  try {
+    const stats = await fs.promises.stat(currentPath);
+    if (!stats.isDirectory()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected path is not a directory',
+      });
+    }
+
+    const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+    const directories = entries
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map((entry) => ({
+        name: entry.name,
+        path: path.join(currentPath, entry.name),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({
+      success: true,
+      currentPath,
+      parentPath: path.dirname(currentPath) === currentPath ? null : path.dirname(currentPath),
+      homePath: os.homedir(),
+      workspaceDir: WORKSPACE_DIR,
+      directories,
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: `Cannot read directory: ${currentPath}`,
       error: error.message,
     });
   }
@@ -132,7 +213,7 @@ app.post('/api/delete-model', async (req, res) => {
       message: `Model '${model}' deleted successfully`,
     });
   } catch (error) {
-    res.status(500).json({
+    res.json({
       success: false,
       message: 'Failed to delete model',
       error: error.message,
@@ -237,29 +318,14 @@ Ensure the files listed are complete and sufficient to make a fully working, sel
     });
 
     // Decide project directory path
-    let projectPath;
-    let projectSlug;
+    const projectPath = resolveOutputPath(outputPath, plan.projectTitle);
+    const projectSlug = path.basename(projectPath);
 
-    if (outputPath && outputPath.trim()) {
-      const trimmedPath = outputPath.trim();
-      if (path.isAbsolute(trimmedPath)) {
-        projectPath = trimmedPath;
-        projectSlug = path.basename(trimmedPath);
-      } else {
-        projectPath = path.join(WORKSPACE_DIR, trimmedPath);
-        projectSlug = trimmedPath;
-      }
-    } else {
-      const safeTitle = (plan.projectTitle || 'project')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)+/g, '');
-      const timestamp = Date.now();
-      projectSlug = `${safeTitle}-${timestamp}`;
-      projectPath = path.join(WORKSPACE_DIR, projectSlug);
+    try {
+      fs.mkdirSync(projectPath, { recursive: true });
+    } catch (error) {
+      throw new Error(`Could not create project directory "${projectPath}": ${error.message}`);
     }
-
-    fs.mkdirSync(projectPath, { recursive: true });
 
     sendEvent('status', { message: `Target project directory: ${projectPath}` });
 
@@ -270,13 +336,7 @@ Ensure the files listed are complete and sufficient to make a fully working, sel
       const filePath = plan.files[i];
       sendEvent('status', { message: `Generating content for file [${i + 1}/${plan.files.length}]: ${filePath}...` });
 
-      // Clean file path to prevent directory traversal
-      const safeRelativePath = path.normalize(filePath).replace(/^(\.\.(\/|\\|$))+/, '');
-      const fullFilePath = path.join(projectPath, safeRelativePath);
-
-      if (!fullFilePath.startsWith(projectPath)) {
-        throw new Error(`Directory traversal attempt detected in path: ${filePath}`);
-      }
+      const { safeRelativePath, fullFilePath } = getSafeFilePath(projectPath, filePath);
 
       const fileDir = path.dirname(fullFilePath);
       if (!fs.existsSync(fileDir)) {
@@ -316,12 +376,12 @@ Rules:
       fs.writeFileSync(fullFilePath, fileContent, 'utf8');
 
       generatedFiles.push({
-        path: filePath,
+        path: safeRelativePath,
         content: fileContent
       });
 
       sendEvent('file_written', {
-        path: filePath,
+        path: safeRelativePath,
         content: fileContent
       });
     }

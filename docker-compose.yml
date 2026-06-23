@@ -12,9 +12,9 @@ services:
     build: ./backend
     container_name: devassist-backend
     ports:
-      - "5001:5001"
+      - "8081:8081"
     environment:
-      - PORT=5001
+      - PORT=8081
       - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
       - WORKSPACE_DIR=/workspace
     volumes:
@@ -28,7 +28,9 @@ services:
     build: ./frontend
     container_name: devassist-frontend
     ports:
-      - "5173:5173"
+      - "8080:8080"
+    environment:
+      - VITE_BACKEND_URL=http://localhost:8081
     depends_on:
       - backend
     restart: unless-stopped

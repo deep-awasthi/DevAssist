@@ -331,6 +331,119 @@ header {
   width: 100%;
 }
 
+.destination-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  width: 100%;
+}
+
+.destination-browse-btn {
+  min-width: 112px;
+  white-space: nowrap;
+}
+
+.directory-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.directory-picker-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.directory-icon-btn {
+  width: 42px;
+  padding: 0;
+}
+
+.directory-picker-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.directory-action {
+  padding: 7px 10px;
+  font-size: 0.8rem;
+}
+
+.directory-picker-error {
+  color: var(--color-error);
+  background: var(--color-error-alpha);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.8rem;
+}
+
+.directory-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: hsl(222, 25%, 7%);
+}
+
+.directory-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.directory-list-item:last-child {
+  border-bottom: 0;
+}
+
+.directory-list-item:hover:not(:disabled) {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+}
+
+.directory-list-item:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.directory-list-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-list-empty {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dark);
+  font-size: 0.85rem;
+}
+
+.directory-picker-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .prompt-textarea-wrapper {
   position: relative;
   width: 100%;
@@ -520,6 +633,61 @@ header {
 .empty-state-icon {
   margin-bottom: 16px;
   color: var(--border-color);
+}
+
+@media (max-width: 860px) {
+  .main-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .output-workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 0.8fr) 1fr;
+  }
+
+  .terminal-console {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+}
+
+@media (max-width: 560px) {
+  header {
+    padding: 0 12px;
+  }
+
+  .status-indicator {
+    font-size: 0.75rem;
+    padding: 5px 8px;
+  }
+
+  .generator-input-container {
+    padding: 14px;
+  }
+
+  .destination-row,
+  .directory-picker-header {
+    grid-template-columns: 1fr;
+  }
+
+  .destination-browse-btn,
+  .directory-icon-btn {
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+  }
+
+  .directory-picker-footer {
+    flex-direction: column;
+  }
+
+  .directory-picker-footer .btn {
+    width: 100%;
+  }
 }
 
 /* Custom Scrollbar for modern touch */

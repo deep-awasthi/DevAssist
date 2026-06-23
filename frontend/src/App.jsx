@@ -13,10 +13,14 @@ import {
   Copy,
   Check,
   Loader2,
-  FileText
+  FileText,
+  FolderOpen,
+  Home,
+  ArrowUp
 } from 'lucide-react';
 
-const BACKEND_URL = window.location.hostname === 'localhost' ? 'http://localhost:5001' : window.location.origin;
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
+  || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : window.location.origin);
 
 export default function App() {
   // Status and connection state
@@ -43,6 +47,11 @@ export default function App() {
   const [project, setProject] = useState(null);
   const [activeFile, setActiveFile] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [isDirectoryPickerOpen, setIsDirectoryPickerOpen] = useState(false);
+  const [directoryPickerPath, setDirectoryPickerPath] = useState('');
+  const [directoryPickerData, setDirectoryPickerData] = useState(null);
+  const [directoryPickerError, setDirectoryPickerError] = useState('');
+  const [isBrowsingDirectories, setIsBrowsingDirectories] = useState(false);
 
   const consoleEndRef = useRef(null);
 
@@ -91,6 +100,40 @@ export default function App() {
     } catch (err) {
       addLog('Failed to fetch models list.', 'error');
     }
+  };
+
+  const browseDirectories = async (targetPath = outputPath || directoryPickerPath || workspaceDir) => {
+    setIsBrowsingDirectories(true);
+    setDirectoryPickerError('');
+
+    try {
+      const query = targetPath ? `?path=${encodeURIComponent(targetPath)}` : '';
+      const res = await fetch(`${BACKEND_URL}/api/directories${query}`);
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Could not read that directory.');
+      }
+
+      setDirectoryPickerData(data);
+      setDirectoryPickerPath(data.currentPath);
+    } catch (err) {
+      setDirectoryPickerError(err.message);
+    } finally {
+      setIsBrowsingDirectories(false);
+    }
+  };
+
+  const openDirectoryPicker = () => {
+    setIsDirectoryPickerOpen(true);
+    browseDirectories(outputPath || workspaceDir);
+  };
+
+  const chooseCurrentDirectory = () => {
+    if (!directoryPickerPath) return;
+    setOutputPath(directoryPickerPath);
+    setIsDirectoryPickerOpen(false);
+    addLog(`Project destination set to: ${directoryPickerPath}`, 'info');
   };
 
   const addLog = (content, type = 'info') => {
@@ -188,8 +231,14 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Server returned an error');
+        let errorMessage = 'Server returned an error';
+        try {
+          const errData = await response.json();
+          errorMessage = errData.error || errData.message || errorMessage;
+        } catch (jsonError) {
+          errorMessage = `${errorMessage} (${response.status})`;
+        }
+        throw new Error(errorMessage);
       }
 
       const reader = response.body.getReader();
@@ -625,17 +674,130 @@ export default function App() {
               {/* Top prompt input */}
               <div className="generator-input-container">
                 <form onSubmit={handleGenerate} className="prompt-form">
-                  <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                  <div className="destination-row">
                     <input
                       type="text"
                       className="select-dropdown"
-                      placeholder="Project Destination Directory (Optional. Default: auto-created subfolder in workspace)"
+                      placeholder="Project destination folder (blank creates a new folder in workspace)"
                       value={outputPath}
                       onChange={(e) => setOutputPath(e.target.value)}
-                      style={{ width: '100%', fontSize: '0.85rem', padding: '10px', background: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)', outline: 'none' }}
+                      style={{ fontSize: '0.85rem', padding: '10px', background: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-main)', outline: 'none' }}
                       disabled={isGenerating}
                     />
+                    <button
+                      type="button"
+                      className="btn btn-secondary destination-browse-btn"
+                      onClick={openDirectoryPicker}
+                      disabled={isGenerating}
+                      title="Browse folders"
+                    >
+                      <FolderOpen size={16} />
+                      <span>Browse</span>
+                    </button>
                   </div>
+                  {isDirectoryPickerOpen && (
+                    <div className="directory-picker">
+                      <div className="directory-picker-header">
+                        <input
+                          type="text"
+                          className="select-dropdown"
+                          value={directoryPickerPath}
+                          onChange={(e) => setDirectoryPickerPath(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              browseDirectories(directoryPickerPath);
+                            }
+                          }}
+                          disabled={isBrowsingDirectories}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-secondary directory-icon-btn"
+                          onClick={() => browseDirectories(directoryPickerPath)}
+                          disabled={isBrowsingDirectories}
+                          title="Open path"
+                        >
+                          {isBrowsingDirectories ? <Loader2 size={16} className="animate-spin" /> : <FolderOpen size={16} />}
+                        </button>
+                      </div>
+
+                      <div className="directory-picker-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary directory-action"
+                          onClick={() => browseDirectories(directoryPickerData?.homePath)}
+                          disabled={isBrowsingDirectories || !directoryPickerData?.homePath}
+                          title="Home"
+                        >
+                          <Home size={14} />
+                          <span>Home</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary directory-action"
+                          onClick={() => browseDirectories(directoryPickerData?.workspaceDir)}
+                          disabled={isBrowsingDirectories || !directoryPickerData?.workspaceDir}
+                        >
+                          <Folder size={14} />
+                          <span>Workspace</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary directory-action"
+                          onClick={() => browseDirectories(directoryPickerData?.parentPath)}
+                          disabled={isBrowsingDirectories || !directoryPickerData?.parentPath}
+                          title="Parent folder"
+                        >
+                          <ArrowUp size={14} />
+                          <span>Up</span>
+                        </button>
+                      </div>
+
+                      {directoryPickerError && (
+                        <div className="directory-picker-error">{directoryPickerError}</div>
+                      )}
+
+                      <div className="directory-list">
+                        {directoryPickerData?.directories?.length > 0 ? (
+                          directoryPickerData.directories.map((dir) => (
+                            <button
+                              type="button"
+                              key={dir.path}
+                              className="directory-list-item"
+                              onClick={() => browseDirectories(dir.path)}
+                              disabled={isBrowsingDirectories}
+                            >
+                              <Folder size={14} />
+                              <span>{dir.name}</span>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="directory-list-empty">
+                            {isBrowsingDirectories ? 'Loading folders...' : 'No folders found here.'}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="directory-picker-footer">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => setIsDirectoryPickerOpen(false)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={chooseCurrentDirectory}
+                          disabled={!directoryPickerPath}
+                        >
+                          Use This Folder
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="prompt-textarea-wrapper">
                     <textarea
                       className="prompt-textarea"
